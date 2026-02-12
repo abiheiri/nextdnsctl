@@ -120,7 +120,7 @@ impl NextDnsClient {
         &self,
         profile_id: &str,
         from: &str,
-        to: &str,
+        status_filter: Option<&str>,
         mut on_batch: F,
     ) -> Result<usize, String>
     where
@@ -131,9 +131,13 @@ impl NextDnsClient {
 
         loop {
             let mut url = format!(
-                "{}/profiles/{}/logs?from={}&to={}&limit=1000",
-                BASE_URL, profile_id, from, to
+                "{}/profiles/{}/logs?from={}&to=now&limit=1000&raw=true",
+                BASE_URL, profile_id, from
             );
+
+            if let Some(status) = status_filter {
+                url.push_str(&format!("&status={}", status));
+            }
 
             if let Some(ref c) = cursor {
                 url.push_str(&format!("&cursor={}", c));

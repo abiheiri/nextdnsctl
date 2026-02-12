@@ -1,7 +1,6 @@
 mod api;
 mod config;
 
-use chrono::{Duration, Local};
 use clap::{Parser, Subcommand};
 use std::io::Write;
 
@@ -53,11 +52,18 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum LsResource {
-    /// List DNS query logs
+    /// List DNS query logs (all or filtered by status)
     Logs {
+        #[command(subcommand)]
+        filter: Option<LogFilter>,
+
         /// Number of days of logs to retrieve (default: 1 = today only)
         #[arg(short, long, default_value_t = 1)]
         days: u32,
+
+        /// Number of minutes of logs to retrieve (overrides -d)
+        #[arg(short, long)]
+        minutes: Option<u32>,
     },
     /// List available profiles
     Profiles,
@@ -65,6 +71,30 @@ enum LsResource {
     Allow,
     /// List the denylist
     Deny,
+}
+
+#[derive(Subcommand)]
+enum LogFilter {
+    /// Show only blocked/denied queries
+    Deny {
+        /// Number of days of logs to retrieve (default: 1 = today only)
+        #[arg(short, long, default_value_t = 1)]
+        days: u32,
+
+        /// Number of minutes of logs to retrieve (overrides -d)
+        #[arg(short, long)]
+        minutes: Option<u32>,
+    },
+    /// Show only allowed queries
+    Allow {
+        /// Number of days of logs to retrieve (default: 1 = today only)
+        #[arg(short, long, default_value_t = 1)]
+        days: u32,
+
+        /// Number of minutes of logs to retrieve (overrides -d)
+        #[arg(short, long)]
+        minutes: Option<u32>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -86,7 +116,11 @@ fn main() {
 
     match cli.command {
         Commands::Ls { resource } => match resource {
-            LsResource::Logs { days } => cmd_logs(days),
+            LsResource::Logs { filter, days, minutes } => match filter {
+                None => cmd_logs(days, minutes, None),
+                Some(LogFilter::Deny { days: d, minutes: m }) => cmd_logs(d, m, Some("blocked")),
+                Some(LogFilter::Allow { days: d, minutes: m }) => cmd_logs(d, m, Some("default")),
+            },
             LsResource::Profiles => cmd_profiles(),
             LsResource::Allow => cmd_list_entries("allowlist"),
             LsResource::Deny => cmd_list_entries("denylist"),
@@ -122,20 +156,29 @@ fn init_client() -> (config::Config, api::NextDnsClient, String) {
     (cfg, client, profile_id)
 }
 
-fn cmd_logs(days: u32) {
+fn cmd_logs(days: u32, minutes: Option<u32>, status_filter: Option<&str>) {
     let (_cfg, client, profile_id) = init_client();
 
-    let now = Local::now();
-    let from = (now - Duration::days(days as i64))
-        .format("%Y-%m-%d")
-        .to_string();
-    let to = now.format("%Y-%m-%dT%H:%M:%S").to_string();
+    let from = if let Some(m) = minutes {
+        format!("-{}m", m)
+    } else {
+        format!("-{}d", days)
+    };
+
+    let period = if let Some(m) = minutes {
+        format!("{} minute{}", m, if m == 1 { "" } else { "s" })
+    } else {
+        format!("{} day{}", days, if days == 1 { "" } else { "s" })
+    };
+
+    let filter_label = match status_filter {
+        Some(s) => format!(" [{}]", s),
+        None => String::new(),
+    };
 
     eprintln!(
-        "Fetching logs for profile {} ({} day{})...",
-        profile_id,
-        days,
-        if days == 1 { "" } else { "s" }
+        "Fetching logs for profile {} ({}){}...",
+        profile_id, period, filter_label
     );
 
     out!(
@@ -144,7 +187,7 @@ fn cmd_logs(days: u32) {
     );
     out!("{}", "-".repeat(100));
 
-    let total = match client.stream_logs(&profile_id, &from, &to, |batch| {
+    let total = match client.stream_logs(&profile_id, &from, status_filter, |batch| {
         for entry in batch {
             let timestamp = &entry.timestamp;
             let status = entry.status.as_deref().unwrap_or("-");

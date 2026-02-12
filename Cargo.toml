@@ -1,13 +1,12 @@
 [package]
 name = "nextdns-cli"
-version = "1.0.0"
+version = "1.1.0"
 edition = "2024"
 description = "CLI tool for interacting with NextDNS API"
 
 [dependencies]
-clap = { version = "4", features = ["derive"] }
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+clap = { version = "4.5.58", features = ["derive"] }
+reqwest = { version = "0.13.2", default-features = false, features = ["blocking", "json", "rustls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-chrono = { version = "0.4", features = ["serde"] }
 dirs = "6"
