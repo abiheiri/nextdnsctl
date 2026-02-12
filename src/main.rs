@@ -48,6 +48,16 @@ enum Commands {
         #[command(subcommand)]
         resource: RmResource,
     },
+    /// Show analytics and statistics for your profile
+    Stat {
+        /// Number of days of stats to retrieve (default: 30)
+        #[arg(short, long, default_value_t = 30)]
+        days: u32,
+
+        /// Number of minutes of stats to retrieve (overrides -d)
+        #[arg(short, long)]
+        minutes: Option<u32>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -131,6 +141,7 @@ fn main() {
             RmResource::Allow { domain } => cmd_remove_entry("allowlist", &domain),
             RmResource::Deny { domain } => cmd_remove_entry("denylist", &domain),
         },
+        Commands::Stat { days, minutes } => cmd_stat(days, minutes),
     }
 }
 
@@ -332,5 +343,163 @@ fn cmd_remove_entry(list: &str, domain: &str) {
             eprintln!("Error: {}", e);
             std::process::exit(1);
         }
+    }
+}
+
+const MAX_STAT_DAYS: u32 = 90;
+
+fn cmd_stat(days: u32, minutes: Option<u32>) {
+    // Validate 90-day maximum
+    let exceeds = if let Some(m) = minutes {
+        m > MAX_STAT_DAYS * 24 * 60
+    } else {
+        days > MAX_STAT_DAYS
+    };
+
+    if exceeds {
+        eprintln!("Error: Maximum range is {} days (3 months).", MAX_STAT_DAYS);
+        std::process::exit(1);
+    }
+
+    // Build time parameters
+    let from = if let Some(m) = minutes {
+        format!("-{}m", m)
+    } else {
+        format!("-{}d", days)
+    };
+
+    let period = if let Some(m) = minutes {
+        format!("{} minute{}", m, if m == 1 { "" } else { "s" })
+    } else {
+        format!("{} day{}", days, if days == 1 { "" } else { "s" })
+    };
+
+    let (_cfg, client, profile_id) = init_client();
+
+    eprintln!("Fetching stats for profile {} ({})...", profile_id, period);
+
+    // --- Section 1: Query Overview ---
+    let statuses = match client.get_analytics_status(&profile_id, &from) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    let total: u64 = statuses.iter().map(|s| s.queries).sum();
+    let blocked: u64 = statuses
+        .iter()
+        .filter(|s| s.status == "blocked")
+        .map(|s| s.queries)
+        .sum();
+    let allowed: u64 = total - blocked;
+
+    let blocked_pct = if total > 0 {
+        (blocked as f64 / total as f64) * 100.0
+    } else {
+        0.0
+    };
+    let allowed_pct = if total > 0 {
+        (allowed as f64 / total as f64) * 100.0
+    } else {
+        0.0
+    };
+
+    out!("");
+    out!("  Query Overview ({})", period);
+    out!("  {}", "-".repeat(40));
+    out!("  Total Queries:    {}", format_number(total));
+    out!(
+        "  Blocked Queries:  {} ({:.1}%)",
+        format_number(blocked),
+        blocked_pct
+    );
+    out!(
+        "  Allowed Queries:  {} ({:.1}%)",
+        format_number(allowed),
+        allowed_pct
+    );
+
+    // --- Section 2: Top Allowed Domains ---
+    let top_allowed = match client.get_analytics_domains(
+        &profile_id, &from, Some("default"), false, 10,
+    ) {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("Error fetching allowed domains: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    print_domain_table("Top Allowed Domains", &top_allowed);
+
+    // --- Section 3: Top Blocked Domains ---
+    let top_blocked = match client.get_analytics_domains(
+        &profile_id, &from, Some("blocked"), false, 10,
+    ) {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("Error fetching blocked domains: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    print_domain_table("Top Blocked Domains", &top_blocked);
+
+    // --- Section 4: Top Root Domains ---
+    let top_root = match client.get_analytics_domains(
+        &profile_id, &from, None, true, 10,
+    ) {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("Error fetching root domains: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    print_domain_table("Top Root Domains", &top_root);
+    out!("");
+}
+
+fn format_number(n: u64) -> String {
+    let s = n.to_string();
+    let mut result = String::new();
+    for (i, ch) in s.chars().rev().enumerate() {
+        if i > 0 && i % 3 == 0 {
+            result.push(',');
+        }
+        result.push(ch);
+    }
+    result.chars().rev().collect()
+}
+
+fn print_domain_table(title: &str, data: &[api::DomainEntry]) {
+    out!("");
+    out!("  {}", title);
+    out!("  {}", "-".repeat(58));
+    out!("  {:<4} {:<40} {:>12}", "#", "DOMAIN", "QUERIES");
+    out!("  {}", "-".repeat(58));
+
+    if data.is_empty() {
+        out!("  No data.");
+    } else {
+        for (i, entry) in data.iter().enumerate() {
+            let domain = truncate(&entry.domain, 40);
+            out!(
+                "  {:<4} {:<40} {:>12}",
+                format!("{}.", i + 1),
+                domain,
+                format_number(entry.queries)
+            );
+        }
+    }
+}
+
+fn truncate(s: &str, max_len: usize) -> String {
+    if s.len() <= max_len {
+        s.to_string()
+    } else {
+        format!("{}...", &s[..max_len - 3])
     }
 }

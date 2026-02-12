@@ -86,6 +86,30 @@ pub struct ListEntryRequest {
     pub active: bool,
 }
 
+// --- Analytics types ---
+
+#[derive(Debug, Deserialize)]
+pub struct StatusEntry {
+    pub status: String,
+    pub queries: u64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct StatusResponse {
+    pub data: Vec<StatusEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DomainEntry {
+    pub domain: String,
+    pub queries: u64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DomainsResponse {
+    pub data: Vec<DomainEntry>,
+}
+
 impl NextDnsClient {
     pub fn new(api_key: &str) -> Self {
         Self {
@@ -304,5 +328,77 @@ impl NextDnsClient {
         }
 
         Ok(())
+    }
+
+    // --- Analytics methods ---
+
+    pub fn get_analytics_status(
+        &self,
+        profile_id: &str,
+        from: &str,
+    ) -> Result<Vec<StatusEntry>, String> {
+        let url = format!(
+            "{}/profiles/{}/analytics/status?from={}&to=now",
+            BASE_URL, profile_id, from
+        );
+        let resp = self
+            .client
+            .get(&url)
+            .header("X-Api-Key", &self.api_key)
+            .send()
+            .map_err(|e| format!("Request failed: {}", e))?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().unwrap_or_default();
+            return Err(format!("API error ({}): {}", status, body));
+        }
+
+        let result: StatusResponse = resp
+            .json()
+            .map_err(|e| format!("Failed to parse analytics/status response: {}", e))?;
+
+        Ok(result.data)
+    }
+
+    pub fn get_analytics_domains(
+        &self,
+        profile_id: &str,
+        from: &str,
+        status_filter: Option<&str>,
+        root: bool,
+        limit: u32,
+    ) -> Result<Vec<DomainEntry>, String> {
+        let mut url = format!(
+            "{}/profiles/{}/analytics/domains?limit={}&from={}&to=now",
+            BASE_URL, profile_id, limit, from
+        );
+
+        if let Some(status) = status_filter {
+            url.push_str(&format!("&status={}", status));
+        }
+
+        if root {
+            url.push_str("&root=true");
+        }
+
+        let resp = self
+            .client
+            .get(&url)
+            .header("X-Api-Key", &self.api_key)
+            .send()
+            .map_err(|e| format!("Request failed: {}", e))?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().unwrap_or_default();
+            return Err(format!("API error ({}): {}", status, body));
+        }
+
+        let result: DomainsResponse = resp
+            .json()
+            .map_err(|e| format!("Failed to parse analytics/domains response: {}", e))?;
+
+        Ok(result.data)
     }
 }
