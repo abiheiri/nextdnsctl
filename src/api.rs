@@ -1,3 +1,7 @@
+//
+// This module provides a client for interacting with the NextDNS API, including fetching profiles,
+//
+
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
 

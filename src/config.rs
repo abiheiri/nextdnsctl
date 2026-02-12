@@ -1,3 +1,7 @@
+//
+// This module handles loading the configuration from a file in the user's home directory.
+//
+
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
