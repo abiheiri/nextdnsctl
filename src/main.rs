@@ -20,8 +20,26 @@ macro_rules! out {
     name = "nextdns-cli",
     about = "CLI tool for interacting with NextDNS API",
     version = VERSION,
+    after_help = "\
+Credentials are read from ~/.nextdns (key=value format):
+
+  api=YOUR_API_KEY
+  profile=PROFILE_ID_OR_NAME   (optional)
+
+Use --api-key and --profile to override these values. When --api-key is \
+provided, the config file is not required.
+
+Get your API key at: https://my.nextdns.io/account",
 )]
 struct Cli {
+    /// API key (overrides ~/.nextdns)
+    #[arg(long, global = true)]
+    api_key: Option<String>,
+
+    /// Profile ID or name (overrides ~/.nextdns)
+    #[arg(long, global = true)]
+    profile: Option<String>,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -123,36 +141,61 @@ enum RmResource {
 
 fn main() {
     let cli = Cli::parse();
+    let overrides = ConfigOverrides {
+        api_key: cli.api_key,
+        profile: cli.profile,
+    };
 
     match cli.command {
         Commands::Ls { resource } => match resource {
             LsResource::Logs { filter, days, minutes } => match filter {
-                None => cmd_logs(days, minutes, None),
-                Some(LogFilter::Deny { days: d, minutes: m }) => cmd_logs(d, m, Some("blocked")),
-                Some(LogFilter::Allow { days: d, minutes: m }) => cmd_logs(d, m, Some("default")),
+                None => cmd_logs(days, minutes, None, &overrides),
+                Some(LogFilter::Deny { days: d, minutes: m }) => cmd_logs(d, m, Some("blocked"), &overrides),
+                Some(LogFilter::Allow { days: d, minutes: m }) => cmd_logs(d, m, Some("default"), &overrides),
             },
-            LsResource::Profiles => cmd_profiles(),
-            LsResource::Allow => cmd_list_entries("allowlist"),
-            LsResource::Deny => cmd_list_entries("denylist"),
+            LsResource::Profiles => cmd_profiles(&overrides),
+            LsResource::Allow => cmd_list_entries("allowlist", &overrides),
+            LsResource::Deny => cmd_list_entries("denylist", &overrides),
         },
-        Commands::Allow { domain } => cmd_add_entry("allowlist", &domain),
-        Commands::Deny { domain } => cmd_add_entry("denylist", &domain),
+        Commands::Allow { domain } => cmd_add_entry("allowlist", &domain, &overrides),
+        Commands::Deny { domain } => cmd_add_entry("denylist", &domain, &overrides),
         Commands::Rm { resource } => match resource {
-            RmResource::Allow { domain } => cmd_remove_entry("allowlist", &domain),
-            RmResource::Deny { domain } => cmd_remove_entry("denylist", &domain),
+            RmResource::Allow { domain } => cmd_remove_entry("allowlist", &domain, &overrides),
+            RmResource::Deny { domain } => cmd_remove_entry("denylist", &domain, &overrides),
         },
-        Commands::Stat { days, minutes } => cmd_stat(days, minutes),
+        Commands::Stat { days, minutes } => cmd_stat(days, minutes, &overrides),
     }
 }
 
-fn init_client() -> (config::Config, api::NextDnsClient, String) {
-    let cfg = match config::load_config() {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("Error: {}", e);
-            std::process::exit(1);
+struct ConfigOverrides {
+    api_key: Option<String>,
+    profile: Option<String>,
+}
+
+fn init_client(overrides: &ConfigOverrides) -> (config::Config, api::NextDnsClient, String) {
+    let mut cfg = if overrides.api_key.is_some() {
+        // If API key is provided via CLI, config file is not required
+        config::Config {
+            api_key: String::new(),
+            profile: None,
+        }
+    } else {
+        match config::load_config() {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                std::process::exit(1);
+            }
         }
     };
+
+    // Apply CLI overrides
+    if let Some(ref key) = overrides.api_key {
+        cfg.api_key = key.clone();
+    }
+    if let Some(ref profile) = overrides.profile {
+        cfg.profile = Some(profile.clone());
+    }
 
     let client = api::NextDnsClient::new(&cfg.api_key);
 
@@ -167,8 +210,8 @@ fn init_client() -> (config::Config, api::NextDnsClient, String) {
     (cfg, client, profile_id)
 }
 
-fn cmd_logs(days: u32, minutes: Option<u32>, status_filter: Option<&str>) {
-    let (_cfg, client, profile_id) = init_client();
+fn cmd_logs(days: u32, minutes: Option<u32>, status_filter: Option<&str>, overrides: &ConfigOverrides) {
+    let (_cfg, client, profile_id) = init_client(overrides);
 
     let from = if let Some(m) = minutes {
         format!("-{}m", m)
@@ -226,8 +269,8 @@ fn cmd_logs(days: u32, minutes: Option<u32>, status_filter: Option<&str>) {
     eprintln!("\nTotal: {} log entries", total);
 }
 
-fn cmd_profiles() {
-    let (cfg, client, _profile_id) = init_client();
+fn cmd_profiles(overrides: &ConfigOverrides) {
+    let (cfg, client, _profile_id) = init_client(overrides);
 
     let profiles = match client.list_profiles() {
         Ok(p) => p,
@@ -255,8 +298,8 @@ fn cmd_profiles() {
     }
 }
 
-fn cmd_list_entries(list: &str) {
-    let (_cfg, client, profile_id) = init_client();
+fn cmd_list_entries(list: &str, overrides: &ConfigOverrides) {
+    let (_cfg, client, profile_id) = init_client(overrides);
 
     let entries = match client.list_entries(&profile_id, list) {
         Ok(e) => e,
@@ -282,8 +325,8 @@ fn cmd_list_entries(list: &str) {
     eprintln!("\nTotal: {} entries", entries.len());
 }
 
-fn cmd_add_entry(list: &str, domain: &str) {
-    let (_cfg, client, profile_id) = init_client();
+fn cmd_add_entry(list: &str, domain: &str, overrides: &ConfigOverrides) {
+    let (_cfg, client, profile_id) = init_client(overrides);
 
     let opposite = if list == "allowlist" {
         "denylist"
@@ -334,8 +377,8 @@ fn cmd_add_entry(list: &str, domain: &str) {
     }
 }
 
-fn cmd_remove_entry(list: &str, domain: &str) {
-    let (_cfg, client, profile_id) = init_client();
+fn cmd_remove_entry(list: &str, domain: &str, overrides: &ConfigOverrides) {
+    let (_cfg, client, profile_id) = init_client(overrides);
 
     match client.remove_entry(&profile_id, list, domain) {
         Ok(()) => out!("Removed '{}' from {}.", domain, list),
@@ -348,7 +391,7 @@ fn cmd_remove_entry(list: &str, domain: &str) {
 
 const MAX_STAT_DAYS: u32 = 90;
 
-fn cmd_stat(days: u32, minutes: Option<u32>) {
+fn cmd_stat(days: u32, minutes: Option<u32>, overrides: &ConfigOverrides) {
     // Validate 90-day maximum
     let exceeds = if let Some(m) = minutes {
         m > MAX_STAT_DAYS * 24 * 60
@@ -374,7 +417,7 @@ fn cmd_stat(days: u32, minutes: Option<u32>) {
         format!("{} day{}", days, if days == 1 { "" } else { "s" })
     };
 
-    let (_cfg, client, profile_id) = init_client();
+    let (_cfg, client, profile_id) = init_client(overrides);
 
     eprintln!("Fetching stats for profile {} ({})...", profile_id, period);
 
