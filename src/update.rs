@@ -5,7 +5,7 @@ use std::io::Read;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 
-const GITHUB_API: &str = "https://api.github.com/repos/abiheiri/nextdns-cli/releases/latest";
+const GITHUB_API: &str = "https://api.github.com/repos/abiheiri/nextdnsctl/releases/latest";
 
 #[derive(Deserialize)]
 struct Release {
@@ -36,26 +36,17 @@ fn asset_name() -> Result<String, String> {
         return Err("Unsupported architecture for self-update.".to_string());
     };
 
-    Ok(format!("nextdns-cli-{}-{}.tar.gz", os, arch))
+    Ok(format!("nextdnsctl-{}-{}.tar.gz", os, arch))
 }
 
 pub fn run_update(current_version: &str) {
-    let token = match crate::config::load_github_token() {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("{}", e);
-            std::process::exit(1);
-        }
-    };
-
     let client = Client::new();
 
     // Fetch latest release
     let resp = match client
         .get(GITHUB_API)
-        .header("Authorization", format!("token {}", token))
         .header("Accept", "application/vnd.github+json")
-        .header("User-Agent", "nextdns-cli")
+        .header("User-Agent", "nextdnsctl")
         .send()
     {
         Ok(r) => r,
@@ -66,10 +57,6 @@ pub fn run_update(current_version: &str) {
     };
 
     let status = resp.status();
-    if status.as_u16() == 401 || status.as_u16() == 403 {
-        eprintln!("Error: Invalid GitHub token, can't fetch latest update.");
-        std::process::exit(1);
-    }
     if status.as_u16() == 404 {
         eprintln!("Error: No releases found.");
         std::process::exit(1);
@@ -116,12 +103,11 @@ pub fn run_update(current_version: &str) {
         }
     };
 
-    // Download the asset (using the API URL with Accept: octet-stream for private repos)
+    // Download the asset
     let resp = match client
         .get(&asset.url)
-        .header("Authorization", format!("token {}", token))
         .header("Accept", "application/octet-stream")
-        .header("User-Agent", "nextdns-cli")
+        .header("User-Agent", "nextdnsctl")
         .send()
     {
         Ok(r) => r,
@@ -185,9 +171,8 @@ fn extract_binary_from_tar_gz(data: &[u8]) -> Result<Vec<u8>, String> {
             .map_err(|e| format!("Failed to read entry path: {}", e))?
             .to_path_buf();
 
-        // Look for the nextdns-cli binary (skip directories and other files)
         if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-            if name == "nextdns-cli" {
+            if name == "nextdnsctl" {
                 let mut buf = Vec::new();
                 entry
                     .read_to_end(&mut buf)
@@ -197,7 +182,7 @@ fn extract_binary_from_tar_gz(data: &[u8]) -> Result<Vec<u8>, String> {
         }
     }
 
-    Err("Could not find nextdns-cli binary in the release archive.".to_string())
+    Err("Could not find nextdnsctl binary in the release archive.".to_string())
 }
 
 fn replace_executable(exe_path: &PathBuf, new_binary: &[u8]) -> Result<(), String> {
@@ -205,7 +190,7 @@ fn replace_executable(exe_path: &PathBuf, new_binary: &[u8]) -> Result<(), Strin
         .parent()
         .ok_or_else(|| "Could not determine executable directory.".to_string())?;
 
-    let tmp_path = dir.join(".nextdns-cli-update.tmp");
+    let tmp_path = dir.join(".nextdnsctl-update.tmp");
 
     // Write new binary to temp file
     fs::write(&tmp_path, new_binary)
@@ -217,7 +202,6 @@ fn replace_executable(exe_path: &PathBuf, new_binary: &[u8]) -> Result<(), Strin
 
     // Atomic rename to replace the current binary
     fs::rename(&tmp_path, exe_path).map_err(|e| {
-        // Clean up temp file on failure
         let _ = fs::remove_file(&tmp_path);
         format!("Failed to replace executable: {}", e)
     })?;
