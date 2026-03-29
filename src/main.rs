@@ -18,7 +18,7 @@ macro_rules! out {
 
 #[derive(Parser)]
 #[command(
-    name = "nextdns-cli",
+    name = "nextdnsctl",
     about = "CLI tool for interacting with NextDNS API",
     version = VERSION,
     after_help = "\
@@ -366,7 +366,7 @@ fn cmd_add_entry(list: &str, domain: &str, overrides: &ConfigOverrides) {
 
     if opposite_entries.iter().any(|e| e.id == domain) {
         eprintln!(
-            "Error: '{}' already exists in the {}. Remove it first with:\n\n  nextdns-cli rm {} {}",
+            "Error: '{}' already exists in the {}. Remove it first with:\n\n  nextdnsctl rm {} {}",
             domain, opposite,
             if opposite == "allowlist" { "allow" } else { "deny" },
             domain

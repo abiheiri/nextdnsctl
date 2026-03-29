@@ -55,9 +55,9 @@ jobs:
       - name: Package
         run: |
           cd target/${{ matrix.target }}/release
-          tar -czvf ../../../nextdns-cli-${{ matrix.name }}.tar.gz nextdns-cli
+          tar -czvf ../../../nextdnsctl-${{ matrix.name }}.tar.gz nextdnsctl
 
       - name: Upload Release
         uses: softprops/action-gh-release@v2
         with:
-          files: nextdns-cli-${{ matrix.name }}.tar.gz
+          files: nextdnsctl-${{ matrix.name }}.tar.gz

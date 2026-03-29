@@ -1,5 +1,5 @@
 [package]
-name = "nextdns-cli"
+name = "nextdnsctl"
 version = "1.2.0"
 edition = "2024"
 description = "CLI tool for interacting with NextDNS API"
