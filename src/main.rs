@@ -5,7 +5,7 @@ mod update;
 use clap::{Parser, Subcommand};
 use std::io::Write;
 
-const VERSION: &str = env!("CARGO_PKG_VERSION");
+const VERSION: &str = env!("NEXTDNS_VERSION");
 
 /// Write to stdout, exit silently on broken pipe.
 macro_rules! out {
