@@ -15,21 +15,29 @@ A command-line tool for managing your [NextDNS](https://nextdns.io) configuratio
 Download the latest release for your platform from the [releases page](https://github.com/abiheiri/nextdnsctl/releases).
 
 ```sh
+mkdir -p ~/.local/bin
+
 # macOS (Apple Silicon)
 curl -L https://github.com/abiheiri/nextdnsctl/releases/latest/download/nextdnsctl-mac-arm64.tar.gz | tar xz
-sudo mv nextdnsctl /usr/local/bin/
+mv nextdnsctl ~/.local/bin/
 
 # macOS (Intel)
 curl -L https://github.com/abiheiri/nextdnsctl/releases/latest/download/nextdnsctl-mac-x64.tar.gz | tar xz
-sudo mv nextdnsctl /usr/local/bin/
+mv nextdnsctl ~/.local/bin/
 
 # Linux (x86_64)
 curl -L https://github.com/abiheiri/nextdnsctl/releases/latest/download/nextdnsctl-linux-x64.tar.gz | tar xz
-sudo mv nextdnsctl /usr/local/bin/
+mv nextdnsctl ~/.local/bin/
 
 # Linux (ARM64)
 curl -L https://github.com/abiheiri/nextdnsctl/releases/latest/download/nextdnsctl-linux-arm64.tar.gz | tar xz
-sudo mv nextdnsctl /usr/local/bin/
+mv nextdnsctl ~/.local/bin/
+```
+
+Make sure `~/.local/bin` is in your `PATH`. Add this to your shell profile if needed:
+
+```sh
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
 ## Configuration
