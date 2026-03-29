@@ -1,5 +1,6 @@
 mod api;
 mod config;
+mod update;
 
 use clap::{Parser, Subcommand};
 use std::io::Write;
@@ -66,6 +67,8 @@ enum Commands {
         #[command(subcommand)]
         resource: RmResource,
     },
+    /// Update to the latest release from GitHub
+    Update,
     /// Show analytics and statistics for your profile
     Stat {
         /// Number of days of stats to retrieve (default: 30)
@@ -157,6 +160,10 @@ fn main() {
             LsResource::Allow => cmd_list_entries("allowlist", &overrides),
             LsResource::Deny => cmd_list_entries("denylist", &overrides),
         },
+        Commands::Update => {
+            update::run_update(VERSION);
+            return;
+        }
         Commands::Allow { domain } => cmd_add_entry("allowlist", &domain, &overrides),
         Commands::Deny { domain } => cmd_add_entry("denylist", &domain, &overrides),
         Commands::Rm { resource } => match resource {

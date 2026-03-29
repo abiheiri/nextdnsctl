@@ -75,3 +75,67 @@ pub fn load_config() -> Result<Config, String> {
 
     Ok(Config { api_key, profile })
 }
+
+/// Load the GitHub token from ~/.nextdns for self-update.
+/// Returns Ok(token) if found and not a placeholder.
+/// If the file exists but has no github_token key, appends a placeholder and tells the user.
+/// If the file doesn't exist, tells the user to create it.
+pub fn load_github_token() -> Result<String, String> {
+    let path = config_path();
+
+    if !path.exists() {
+        return Err(
+            "Config file ~/.nextdns not found.\n\n\
+             Create it and add your GitHub token:\n\n\
+             echo 'github_token=YOUR_GITHUB_TOKEN' > ~/.nextdns\n\n\
+             The token needs 'repo' scope for private repository access."
+                .to_string(),
+        );
+    }
+
+    let contents = fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
+
+    let mut values: HashMap<String, String> = HashMap::new();
+
+    for line in contents.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        if let Some((key, value)) = trimmed.split_once('=') {
+            let cleaned = value.trim().trim_matches(|c| c == '"' || c == '\'');
+            values.insert(key.trim().to_lowercase(), cleaned.to_string());
+        }
+    }
+
+    match values.get("github_token") {
+        None => {
+            // Append placeholder to existing file
+            use std::io::Write;
+            let mut file = fs::OpenOptions::new()
+                .append(true)
+                .open(&path)
+                .map_err(|e| format!("Failed to open {}: {}", path.display(), e))?;
+
+            writeln!(file, "\ngithub_token=YOUR_GITHUB_TOKEN")
+                .map_err(|e| format!("Failed to write to {}: {}", path.display(), e))?;
+
+            Err(
+                "GitHub token not found in ~/.nextdns.\n\n\
+                 A placeholder has been added. Edit ~/.nextdns and replace YOUR_GITHUB_TOKEN \
+                 with your actual token.\n\n\
+                 The token needs 'repo' scope for private repository access."
+                    .to_string(),
+            )
+        }
+        Some(token) if token.is_empty() || token == "YOUR_GITHUB_TOKEN" => {
+            Err(
+                "GitHub token is not set. Replace YOUR_GITHUB_TOKEN with your actual token in ~/.nextdns.\n\n\
+                 The token needs 'repo' scope for private repository access."
+                    .to_string(),
+            )
+        }
+        Some(token) => Ok(token.clone()),
+    }
+}
