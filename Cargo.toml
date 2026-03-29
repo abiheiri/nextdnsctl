@@ -1,6 +1,6 @@
 [package]
 name = "nextdnsctl"
-version = "1.2.0"
+version = "1.4.0"
 edition = "2024"
 description = "CLI tool for interacting with NextDNS API"
 authors = ["AL Biheiri <al@forgottheaddress.com>"]
