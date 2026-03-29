@@ -1,6 +1,5 @@
-//
-// This module provides a client for interacting with the NextDNS API, including fetching profiles,
-//
+// Copyright 2025 AL Biheiri <al@forgottheaddress.com>
+// SPDX-License-Identifier: Apache-2.0
 
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};

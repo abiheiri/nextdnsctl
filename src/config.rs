@@ -1,6 +1,5 @@
-//
-// This module handles loading the configuration from a file in the user's home directory.
-//
+// Copyright 2025 AL Biheiri <al@forgottheaddress.com>
+// SPDX-License-Identifier: Apache-2.0
 
 use std::collections::HashMap;
 use std::fs;
